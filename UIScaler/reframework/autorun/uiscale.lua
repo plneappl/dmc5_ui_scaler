@@ -24,7 +24,8 @@ local x_offset_cutscenes = 0
 local y_offset_cutscenes = 0
 
 local disable = false
-local reset_disabled = false
+local filter_method = "allowlist"
+local reset_disabled = true
 
 local json_name = "uiscale.json"
 local settings = json.load_file(json_name)
@@ -44,6 +45,7 @@ if(settings ~= nil) then
         y_scale_cutscenes = v111Settings.y_scale_cutscenes
         x_offset_cutscenes = v111Settings.x_offset_cutscenes
         y_offset_cutscenes = v111Settings.y_offset_cutscenes
+        filter_method = v111Settings.filter_method
     end
 end
 
@@ -58,7 +60,8 @@ function save_settings()
             x_scale_cutscenes = x_scale_cutscenes,
             y_scale_cutscenes = y_scale_cutscenes,
             x_offset_cutscenes = x_offset_cutscenes,
-            y_offset_cutscenes = y_offset_cutscenes
+            y_offset_cutscenes = y_offset_cutscenes,
+            filter_method = filter_method
         }
     }
     json.dump_file(json_name, all_settings)
@@ -75,6 +78,7 @@ re.on_draw_ui(function()
         changed7, y_offset = imgui.slider_float(" y_offset", y_offset, 0, 1000)
         changed8, x_offset_cutscenes = imgui.slider_float(" x-offset (loading screens)", x_offset_cutscenes, 0, 4000)
         changed9, y_offset_cutscenes = imgui.slider_float(" y_offset (loading screens)", y_offset_cutscenes, 0, 1000)
+        changed10, filter_method = imgui.combo(" filter method", filter_method, { allowlist = "allowlist", blocklist = "blocklist" })
         _, reset_disabled = imgui.checkbox(" reset disabled elements (debugging)", reset_disabled)
 
         if 
@@ -86,7 +90,8 @@ re.on_draw_ui(function()
             changed6 or 
             changed7 or 
             changed8 or 
-            changed9 then
+            changed9 or 
+            changed10 then
             save_settings()
         end
     end
@@ -94,77 +99,79 @@ end)
 
 local game_object_get_component = sdk.find_type_definition("via.GameObject"):get_method("getComponent(System.Type)")
 
-local should_not_scale_name = {}
-should_not_scale_name["SaveLoadIcon_GUImesh"] = true
+function set_add(aset, value)
+    aset[value] = true
+end
+
+function set_contains(aset, value)
+    return aset[value] == true
+end
+
+local blocklist_name = {}
+local blocklist_type = {}
+set_add(blocklist_name, "SaveLoadIcon_GUImesh")
 -- gauntlet overlay
-should_not_scale_name["pickupGauntletHud"] = true
-should_not_scale_name["Fade_Loading"] = true
-should_not_scale_name["Fade_InGame"] = true
-should_not_scale_name["Fade_Menu"] = true
+set_add(blocklist_name, "pickupGauntletHud")
+set_add(blocklist_name, "Fade_Loading")
+set_add(blocklist_name, "Fade_InGame")
+set_add(blocklist_name, "Fade_Menu")
 -- secret mission marker
-should_not_scale_name["SecretVision"] = true
+set_add(blocklist_name, "SecretVision")
 -- shop messages
-should_not_scale_name["ui0002"] = true
+set_add(blocklist_name, "ui0002")
 -- loading screen
-should_not_scale_name["ui0040"] = true
-should_not_scale_name["ui0041"] = true
-should_not_scale_name["ui3107"] = true
-should_not_scale_name["ui3108_s10"] = true
+set_add(blocklist_name, "ui0040")
+set_add(blocklist_name, "ui0041")
+set_add(blocklist_name, "ui3107")
+set_add(blocklist_name, "ui3108_s10")
 -- overlay: start secret mission
-should_not_scale_name["MessageLabel"] = true
-should_not_scale_name["ui3104"] = true
+set_add(blocklist_name, "MessageLabel")
+set_add(blocklist_name, "ui3104")
 -- overlay: secret mission instructions
-should_not_scale_name["ui7002"] = true
+set_add(blocklist_name, "ui7002")
 -- some boss names
-should_not_scale_name["m16_200_UI"] = true
-should_not_scale_name["m17_300_UI"] = true
+set_add(blocklist_name, "ui2065")
+set_add(blocklist_name, "m16_200_UI")
+set_add(blocklist_name, "m17_300_UI")
+set_add(blocklist_name, "m20_100_TitleUI")
 -- credits
-should_not_scale_name["ui6000"] = true
-should_not_scale_name["ScarsGUI"] = true
-should_not_scale_name["ScarsRoughnessGUI"] = true
-should_not_scale_name["ScarsNormalGUI"] = true
-should_not_scale_name["Fade_Menu"] = true
+set_add(blocklist_name, "ui6000")
+set_add(blocklist_name, "ScarsGUI")
+set_add(blocklist_name, "ScarsRoughnessGUI")
+set_add(blocklist_name, "ScarsNormalGUI")
+set_add(blocklist_name, "Fade_Menu")
+-- billboard in mission 2
+set_add(blocklist_name, "ui9000")
+-- nidhogg hatchling messages
+set_add(blocklist_name, "ui3102")
+set_add(blocklist_name, "ui3103")
+-- next-objective effect
+set_add(blocklist_name, "ui1025")
+-- training hud
+set_add(blocklist_name, "ui8013")
 
--- in game menu
--- "ui3105"
-
-local should_not_scale_type = {}
 -- hp markers
-table.insert(should_not_scale_type, sdk.typeof("app.ui1008GUI"))
+table.insert(blocklist_type, sdk.typeof("app.ui1008GUI"))
 -- target markers
-table.insert(should_not_scale_type, sdk.typeof("app.ui1009GUI"))
-table.insert(should_not_scale_type, sdk.typeof("app.ui1010GUI"))
+table.insert(blocklist_type, sdk.typeof("app.ui1009GUI"))
+table.insert(blocklist_type, sdk.typeof("app.ui1010GUI"))
 
-function has_type(list_of_types, game_object)
-    for _, type in ipairs(list_of_types) do
-        if game_object_get_component(game_object, type) ~= nil then
-            return true
-        end
-    end
-    return false
-end
-
-function do_scale(game_object, name)
-    return
-        not disable and
-        should_not_scale_name[name] ~= true and
-        not has_type(should_not_scale_type, game_object)
-end
-
-local cutscenes = {}
+local cutscene_name = {}
+local cutscene_type = {}
 -- intro
-cutscenes["StartLogo"] = true
-cutscenes["ui2201_Vergil"] = true
+set_add(cutscene_name, "ui7004")
+set_add(cutscene_name, "StartLogo")
+set_add(cutscene_name, "ui2201_Vergil")
 -- loading screens
-cutscenes["ui3101"] = true
-cutscenes["ui3120"] = true
-cutscenes["ui8022"] = true
+set_add(cutscene_name, "ui3101")
+set_add(cutscene_name, "ui3120")
+set_add(cutscene_name, "ui8022")
+--table.insert(cutscene_type, sdk.typeof("app.ui1007GUI"))
 
-function is_cutscene(game_object, name)
-    return cutscenes[name] == true
-end
-
+local right_aligned_names = {}
 local right_aligned_types = {}
+-- points (duh!)
+set_add(right_aligned_names, "point_hud")
 -- gauntlet UI
 table.insert(right_aligned_types, sdk.typeof("app.ui1013GUI"))
 -- c-c-combo
@@ -172,18 +179,134 @@ table.insert(right_aligned_types, sdk.typeof("app.ui1014GUI"))
 -- ORBS
 table.insert(right_aligned_types, sdk.typeof("app.ui1020GUI"))
 
-function draw_right_aligned(game_object, name)
-    return has_type(right_aligned_types, game_object)
-end
-
 local bot_aligned_types = {}
 -- boss health
 table.insert(bot_aligned_types, sdk.typeof("app.ui1007GUI"))
 -- gauntlet UI
 table.insert(bot_aligned_types, sdk.typeof("app.ui1013GUI"))
 
+local centered_types = {}
+-- boss health
+table.insert(centered_types, sdk.typeof("app.ui1007GUI"))
+
+
+local allowlist_name = {}
+local allowlist_type = {}
+-- add other overrides as default
+for name,_ in pairs(cutscene_name) do
+    set_add(allowlist_name, name)
+end
+-- add others
+-- main menus
+set_add(allowlist_name, "ui2032")
+set_add(allowlist_name, "ui2003")
+set_add(allowlist_name, "ui2046")
+-- mission start menu
+set_add(allowlist_name, "ui2004")
+set_add(allowlist_name, "ui2120")
+-- in game menu
+set_add(allowlist_name, "ui3105")
+set_add(allowlist_name, "ui3111")
+-- in game shop
+set_add(allowlist_name, "ui2027")
+-- skill list
+set_add(allowlist_name, "ui3110")
+-- tutorial message
+set_add(allowlist_name, "ui7001")
+-- secret mission menu
+set_add(allowlist_name, "ui8021")
+-- initial load screen
+set_add(allowlist_name, "BootLoad")
+-- points (duh!)
+set_add(allowlist_name, "point_hud")
+-- training menu
+set_add(allowlist_name, "ui8011")
+-- result screen
+set_add(allowlist_name, "ui3201")
+set_add(allowlist_name, "ui3202")
+set_add(allowlist_name, "ui3203")
+-- options
+set_add(allowlist_name, "ui4000")
+-- game over
+set_add(allowlist_name, "ui3007")
+set_add(allowlist_name, "ui3008")
+-- credits
+set_add(allowlist_name, "m21_100_StaffUI")
+set_add(allowlist_name, "ui7100Unroll")
+set_add(allowlist_name, "ui7100DLC")
+-- weapon change
+table.insert(allowlist_type, sdk.typeof("app.ui1018GUI"))
+table.insert(allowlist_type, sdk.typeof("app.ui1026GUI"))
+-- c-c-combo
+table.insert(allowlist_type, sdk.typeof("app.ui1014GUI"))
+-- ORBS
+table.insert(allowlist_type, sdk.typeof("app.ui1020GUI"))
+-- boss health
+table.insert(allowlist_type, sdk.typeof("app.ui1007GUI"))
+-- gauntlet UI
+table.insert(allowlist_type, sdk.typeof("app.ui1013GUI"))
+-- devil trigger/HP
+table.insert(allowlist_type, sdk.typeof("app.ui1015GUI"))
+-- Vergil HP
+table.insert(allowlist_type, sdk.typeof("app.ui1027GUI"))
+-- Nero HP
+table.insert(allowlist_type, sdk.typeof("app.ui1011GUI"))
+-- V HP
+table.insert(allowlist_type, sdk.typeof("app.ui1016GUI"))
+-- time cutscene
+table.insert(allowlist_type, sdk.typeof("app.EventTimeGUI"))
+--table.insert(allowlist_type, sdk.typeof("via.gui.GUICamera"))
+--table.insert(allowlist_type, sdk.typeof("via.gui.GUIPointLight"))
+
+
+function has_type(list_of_types, game_object)
+    for _, type in ipairs(list_of_types) do
+        if game_object_get_component(game_object, type) ~= nil then
+            return true
+        end 
+    end
+    return false
+end
+
+function is_blocklisted(game_object, name)
+    return set_contains(blocklist_name, name) or
+        has_type(blocklist_type, game_object)
+end
+
+function is_allowlisted(game_object, name)
+    return set_contains(allowlist_name, name) or
+        has_type(allowlist_type, game_object)
+end
+
+function do_scale(game_object, name)
+    if disable then
+        return false
+    end
+    if filter_method == "allowlist" then
+        return is_allowlisted(game_object, name)
+    else
+        return not is_blocklisted(game_object, name)
+    end
+end
+
+function is_cutscene(game_object, name)
+    return
+        set_contains(cutscene_name, name) or
+        has_type(cutscene_type, game_object)
+end
+
+function draw_right_aligned(game_object, name)
+    return 
+        set_contains(right_aligned_names, name) or 
+        has_type(right_aligned_types, game_object)
+end
+
 function draw_bot_aligned(game_object, name)
     return has_type(bot_aligned_types, game_object)
+end
+
+function draw_centered(game_object, name)
+    return has_type(centered_types, game_object)
 end
 
 re.on_pre_gui_draw_element(function(element, context)
@@ -193,8 +316,12 @@ re.on_pre_gui_draw_element(function(element, context)
         local position = transform:get_position()
         local name = game_object:get_Name()
 
-        if do_scale(game_object, name) then
-            --logger(tostring(name))
+        local should_scale = do_scale(game_object, name)
+
+        if should_scale then
+            if filter_method == "blocklist" then
+                logger(tostring(name))
+            end
 
             local gui_component = game_object_get_component(game_object, gui_type)
             local view = gui_component:get_View()
@@ -219,13 +346,21 @@ re.on_pre_gui_draw_element(function(element, context)
             if draw_bot_aligned(game_object, name) then
                 y_off = -y_off
             end
+            if draw_centered(game_object, name) then
+                x_off = 0
+            end
             view:set_Position(Vector3f.new(x_off, y_off, 0))
-
-        elseif reset_disabled then
-            local gui_component = game_object_get_component(game_object, gui_type)
-            local view = gui_component:get_View()
-            view:set_Scale(Vector3f.new(1, 1, 1))
-            view:set_Position(Vector3f.new(0, 0, 0))
+        end
+        if not should_scale then
+            if filter_method == "allowlist" and not is_blocklisted(game_object, name) then
+                logger(tostring(name))
+            end
+            if reset_disabled then
+                local gui_component = game_object_get_component(game_object, gui_type)
+                local view = gui_component:get_View()
+                view:set_Scale(Vector3f.new(1, 1, 1))
+                view:set_Position(Vector3f.new(0, 0, 0))
+            end
         end
     end
     return true
