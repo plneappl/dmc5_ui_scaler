@@ -25,11 +25,10 @@ local y_offset_cutscenes = 0
 
 local disable = false
 local filter_method = "allowlist"
-local reset_disabled = true
+local developer = false
 
 local json_name = "uiscale.json"
 local settings = json.load_file(json_name)
-logger(tostring(settings))
 if(settings ~= nil) then
     x_scale = settings.x_scale
     y_scale = settings.y_scale
@@ -46,6 +45,7 @@ if(settings ~= nil) then
         x_offset_cutscenes = v111Settings.x_offset_cutscenes
         y_offset_cutscenes = v111Settings.y_offset_cutscenes
         filter_method = v111Settings.filter_method
+        developer = v111Settings.developer
     end
 end
 
@@ -61,7 +61,8 @@ function save_settings()
             y_scale_cutscenes = y_scale_cutscenes,
             x_offset_cutscenes = x_offset_cutscenes,
             y_offset_cutscenes = y_offset_cutscenes,
-            filter_method = filter_method
+            filter_method = filter_method,
+            developer = developer
         }
     }
     json.dump_file(json_name, all_settings)
@@ -79,7 +80,7 @@ re.on_draw_ui(function()
         changed8, x_offset_cutscenes = imgui.slider_float(" x-offset (loading screens)", x_offset_cutscenes, 0, 4000)
         changed9, y_offset_cutscenes = imgui.slider_float(" y_offset (loading screens)", y_offset_cutscenes, 0, 1000)
         changed10, filter_method = imgui.combo(" filter method", filter_method, { allowlist = "allowlist", blocklist = "blocklist" })
-        _, reset_disabled = imgui.checkbox(" reset disabled elements (debugging)", reset_disabled)
+        changed11, developer = imgui.checkbox(" debug logging, reset filtered, ...", developer)
 
         if 
             changed1 or 
@@ -91,7 +92,8 @@ re.on_draw_ui(function()
             changed7 or 
             changed8 or 
             changed9 or 
-            changed10 then
+            changed10 or 
+            changed11 then
             save_settings()
         end
     end
@@ -255,8 +257,6 @@ table.insert(allowlist_type, sdk.typeof("app.ui1011GUI"))
 table.insert(allowlist_type, sdk.typeof("app.ui1016GUI"))
 -- time cutscene
 table.insert(allowlist_type, sdk.typeof("app.EventTimeGUI"))
---table.insert(allowlist_type, sdk.typeof("via.gui.GUICamera"))
---table.insert(allowlist_type, sdk.typeof("via.gui.GUIPointLight"))
 
 
 function has_type(list_of_types, game_object)
@@ -319,7 +319,7 @@ re.on_pre_gui_draw_element(function(element, context)
         local should_scale = do_scale(game_object, name)
 
         if should_scale then
-            if filter_method == "blocklist" then
+            if developer and filter_method == "blocklist" then
                 logger(tostring(name))
             end
 
@@ -351,16 +351,14 @@ re.on_pre_gui_draw_element(function(element, context)
             end
             view:set_Position(Vector3f.new(x_off, y_off, 0))
         end
-        if not should_scale then
+        if developer and not should_scale then
             if filter_method == "allowlist" and not is_blocklisted(game_object, name) then
                 logger(tostring(name))
             end
-            if reset_disabled then
-                local gui_component = game_object_get_component(game_object, gui_type)
-                local view = gui_component:get_View()
-                view:set_Scale(Vector3f.new(1, 1, 1))
-                view:set_Position(Vector3f.new(0, 0, 0))
-            end
+            local gui_component = game_object_get_component(game_object, gui_type)
+            local view = gui_component:get_View()
+            view:set_Scale(Vector3f.new(1, 1, 1))
+            view:set_Position(Vector3f.new(0, 0, 0))
         end
     end
     return true
